@@ -182,7 +182,7 @@ for (sym in symbol){
 }
 stats <- tradeStats(portfolio.st)
 
-eq1 <- getAccount(account.st)$summary
+eq1 <- getAccount(account.st)$summary$End
 rt1 <- Return.calculate(eq1,"log")
 
 getSymbols("^GSPC", from = '2000-01-01')
