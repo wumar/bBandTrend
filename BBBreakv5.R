@@ -7,7 +7,6 @@
 # the moving average. Here a using a function to set a indicator parameter works for the first time
 # it was important to match the component label. Now a new problem arises of multiple function calls
 # to a single varying user variable, so a new version is created to address this.
-# OK this runs, but only varies bbClose from 1 to 0 to 1
 
 library(quantstrat)       # Required package for strategy back testing
 library(doParallel)       # For parrallel optimization
@@ -22,44 +21,45 @@ portfolio.st <- "BB1"       # Portfolio name
 account.st   <- "BB1"       # Account name
 maPeriod     <- 150         # moving average period
 bbBreakout   <- 2           # multiple of SD for breakout 
-bbClose      <- seq(-1, 1, by = 1)           # multiple of SD for close
+bbClose      <- 1           # multiple of SD for close
+bbClose2     <-  seq(-1,1, by = 1)# multiple of SD for band assignment
 
 # This function sets the standard devation parameter to pass to the 
 # Bolinger Band indicator function
 
-closeSD_final <- function(user_SD){
-  if(user_SD == 0){
-    returnSD <- 1
-  } else{
-    returnSD <- abs(user_SD)
-  }
-  return(returnSD)
-}
+#closeSD_final <- function(user_SD){
+#  if(user_SD == 0){
+#    returnSD <- 1
+#  } else{
+#    returnSD <- abs(user_SD)
+#  }
+#  return(returnSD)
+#}
 
 # The following two functions set, based on the bbClose variable, which band the close must
 # cross in order for the strategy to exit. If number os +ve it is on the same side of the 
 # moving average as the initial move, 0 is the MA and -ve is on the other side of the MA.
 
 longExitBand <- function(user_SD){
-  if(user_SD == 0){
-    longBand <- "mavg.BBands_close"
-  } else if(user_SD > 0){
+ # if(user_SD == 0){
+  #  longBand <- "mavg.BBands_close"
+ # } else if(user_SD > 0){
     longBand <- "up.BBands_close" 
-  } else {
-    longBand <- "dn.BBands_close"
-  }
+  #} else {
+   # longBand <- "dn.BBands_close"
+  #}
   return(longBand)
 }
 
-shortExitBand <- function(user_SD){
-  if(user_SD == 0){
-    shortBand <- "mavg.BBands_close"
-  } else if(user_SD > 0){
-    shortBand <- "dn.BBands_close" 
-  } else {
-    shortBand <- "up.BBands_close"
-  }
-}
+#shortExitBand <- function(user_SD){
+#  if(user_SD == 0){
+#    shortBand <- "mavg.BBands_close"
+#  } else if(user_SD > 0){
+#    shortBand <- "dn.BBands_close" 
+#  } else {
+#    shortBand <- "up.BBands_close"
+#  }
+#}
 
 currency('USD')             # set USD as a base currency
 
@@ -100,8 +100,8 @@ add.indicator(strat, name = "BBands",
 add.indicator(strat, name = "BBands", 
               arguments = list(HLC = quote(Cl(mktdata)), 
                                n = maPeriod, maType = 'SMA',
-                               sd = closeSD_final(bbClose),
-                               dummy = bbClose),
+                               sd = bbClose
+                               ),
               label = "BBands_close"
               )
 
@@ -116,7 +116,7 @@ add.signal(strat, name = "sigCrossover",
            )
 
 add.signal(strat, name = "sigCrossover", 
-           arguments = list(columns=c(quote(Cl(mktdata)),longExitBand(bbClose)), 
+           arguments = list(columns=c(quote(Cl(mktdata)),longExitBand(bbClose2)), 
                             relationship = "lt"
                             ), 
            label = "long_exit"
@@ -130,7 +130,7 @@ add.signal(strat, name = "sigCrossover",
            )
 
 add.signal(strat, name = "sigCrossover", 
-           arguments = list(columns=c(quote(Cl(mktdata)),shortExitBand(bbClose)), 
+           arguments = list(columns=c(quote(Cl(mktdata)),"up.BBands_breakout"), 
                             relationship = "gt"
                             ), 
            label = "short_exit"
@@ -172,12 +172,20 @@ add.rule(strat, name = 'ruleSignal',
 
 #add paramset distributions
 
+#add.distribution(portfolio.st,
+#                 paramset.label = "BB_OPT",
+#                 component.type = "indicator",
+#                 component.label = "BBands_close",
+#                 variable = list(sd = closeSD_final(bbClose)),
+#                label = "bb_break"
+#)
+
 add.distribution(portfolio.st,
                  paramset.label = "BB_OPT",
-                 component.type = "indicator",
-                 component.label = "BBands_close",
-                 variable = list(sd = closeSD_final(bbClose)),
-                 label = "bb_break"
+                 component.type = "signal",
+                 component.label = "long_exit",
+                 variable = (columns=c(quote(Cl(mktdata)),longExitBand(bbClose2))),
+                 label = "bb_dir"
 )
 
 registerDoParallel(cores=detectCores())

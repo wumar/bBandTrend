@@ -5,7 +5,7 @@
 # of standard deviations from the central moving average. Negative number means the other way.
 # Here we incorporate optimization via paramsets, using the bbBreakout variable first, the adding
 # the moving average. Here a using a function to set a indicator parameter works for the first time
-# it was important to match the component label. Attempt to set multiple variables in one function
+# it was important to match the component label.
 
 library(quantstrat)       # Required package for strategy back testing
 library(doParallel)       # For parrallel optimization
@@ -89,9 +89,8 @@ add.indicator(strat, name = "BBands",
 
 add.indicator(strat, name = "BBands", 
               arguments = list(HLC = quote(Cl(mktdata)), 
-                               n = maPeriod, maType = 'SMA',
-                               sd = abs(bbClose),
-                               dummy = bbClose),
+                               n = maPeriod, maType = 'SMA',sd = abs(bbClose)
+                               ),
               label = "BBands_close"
               )
 
@@ -185,6 +184,7 @@ add.distribution(portfolio.st,
                  variable = list(columns=longExitBand(bbClose1)),
                  label = "bb_LE"
 )
+
 registerDoParallel(cores=detectCores())
 
 out <- apply.paramset(strat, paramset.label = "BB_OPT",
