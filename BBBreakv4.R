@@ -3,33 +3,27 @@
 # defined as the close price crossing a  number of standard deviations away from the central
 # moving average. THe position is closed when the close price crosses back below another number
 # of standard deviations from the central moving average. Negative number means the other way.
+# Here we incorporate optimization via paramsets, using the bbBreakout variable first, the adding
+# the moving average. Here a using a function to set a indicator parameter works for the first time
+# it was important to match the component label. Attempt to set multiple variables in one function
 
 library(quantstrat)       # Required package for strategy back testing
+library(doParallel)       # For parrallel optimization
+library(rgl)              # Library to load 3D trade graphs
+library(reshape2)         # Library to load 3D trade graphs
 ttz<-Sys.getenv('TZ')     # Time zone to UTC, saving original time zone
 Sys.setenv(TZ='UTC')
 
+csvDir       <- "C:/Users/RJK/Documents/SpiderOak Hive/Financial/commodities_data" # Directory containing csv files
 strat        <- "BB1"       # Give the stratgey a name variable
 portfolio.st <- "BB1"       # Portfolio name
 account.st   <- "BB1"       # Account name
-maPeriod     <- 200          # moving average period
+maPeriod     <- 150         # moving average period
 bbBreakout   <- 2           # multiple of SD for breakout 
-bbClose      <- -2           # multiple of SD for close
+bbClose2 <- bbClose1 <- bbClose      <- seq(-1, 1, by = 1)           # multiple of SD for close
 
 # This function sets the standard devation parameter to pass to the 
 # Bolinger Band indicator function
-
-closeSD_final <-function(user_SD){
-  if(user_SD == 0){
-    returnSD <- 1
-  } else{
-    returnSD <- abs(user_SD)
-  }
-  return(returnSD)
-}
-
-# The following two functions set, based on the bbClose variable, which band the close must
-# cross in order for the strategy to exit. If number os +ve it is on the same side of the 
-# moving average as the initial move, 0 is the MA and -ve is on the other side of the MA.
 
 longExitBand <- function(user_SD){
   if(user_SD == 0){
@@ -50,19 +44,28 @@ shortExitBand <- function(user_SD){
   } else {
     shortBand <- "up.BBands_close"
   }
+  return(shortBand)
 }
+
+# The following two functions set, based on the bbClose variable, which band the close must
+# cross in order for the strategy to exit. If number os +ve it is on the same side of the 
+# moving average as the initial move, 0 is the MA and -ve is on the other side of the MA.
 
 currency('USD')             # set USD as a base currency
 
 # Universe selection
-symbol <- "GSPC" # At this stage is only one symbol
+symbol <- "PT" # At this stage is only one symbol
 
 # if run previously, run this code
 rm.strat(portfolio.st)
+delete.paramset(portfolio.st,"BB_OPT")
 
 # set the instument as a future and get the data from the csv file
-stock(symbol, currency = "USD", multiplier = 1)
-getSymbols("^GSPC", from = '1995-01-01')
+future(symbol, currency = "USD", multiplier = 1)
+getSymbols(Symbols = symbol, verbose = TRUE, warnings = TRUE, 
+           src = 'csv', dir= csvDir, extension='csv', header = TRUE, 
+           stingsAsFactors = FALSE)
+PT <- to.daily(PT, indexAt='days',drop.time = TRUE)
 
 # initialize the portfolio, account and orders. Starting equity $10K and assuming data post 1998.
 
@@ -86,8 +89,9 @@ add.indicator(strat, name = "BBands",
 
 add.indicator(strat, name = "BBands", 
               arguments = list(HLC = quote(Cl(mktdata)), 
-                               n = maPeriod, maType = 'SMA',sd = closeSD_final(bbClose)
-                               ),
+                               n = maPeriod, maType = 'SMA',
+                               sd = abs(bbClose),
+                               dummy = bbClose),
               label = "BBands_close"
               )
 
@@ -102,7 +106,7 @@ add.signal(strat, name = "sigCrossover",
            )
 
 add.signal(strat, name = "sigCrossover", 
-           arguments = list(columns=c(quote(Cl(mktdata)),longExitBand(bbClose)), 
+           arguments = list(columns=c(quote(Cl(mktdata)),longExitBand(bbClose1)), 
                             relationship = "lt"
                             ), 
            label = "long_exit"
@@ -116,7 +120,7 @@ add.signal(strat, name = "sigCrossover",
            )
 
 add.signal(strat, name = "sigCrossover", 
-           arguments = list(columns=c(quote(Cl(mktdata)),shortExitBand(bbClose)), 
+           arguments = list(columns=c(quote(Cl(mktdata)),shortExitBand(bbClose2)), 
                             relationship = "gt"
                             ), 
            label = "short_exit"
@@ -156,19 +160,41 @@ add.rule(strat, name = 'ruleSignal',
          type ='exit', label = "SX"
          )
 
-out <- applyStrategy(strategy=strat , portfolios=portfolio.st) # Attempt the strategy
-updatePortf(Portfolio = portfolio.st)                          # Update the portfolio
-updateAcct(name = account.st)
-updateEndEq(account.st)
-chart.Posn(Portfolio = portfolio.st, Symbol = symbol, TA="add_BBands(n=20,sd=2)", Dates = "1995-01::2016-05")          # Chart the position
-stats <- tradeStats(portfolio.st)
+#add paramset distributions
 
-eq1 <- getAccount(account.st)$summary$End.Eq
-rt1 <- Return.calculate(eq1,"log")
-rt2 <- periodReturn(GSPC, period = "daily")
-returns <- cbind(rt1,rt2)
-colnames(returns) <- c("BB","SP500")
-chart.CumReturns(returns,colorset=c(2,4),legend.loc="topleft",
-                 main="BBand to Benchmark Comparison",ylab="cum return",xlab="",
-                 minor.ticks=FALSE)
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "indicator",
+                 component.label = "BBands_close",
+                 variable = list(sd = abs(bbClose)),
+                 label = "bb_stop"
+)
+
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "signal",
+                 component.label = "short_exit",
+                 variable = list(columns=shortExitBand(bbClose2)),
+                 label = "bb_SE"
+)
+
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "signal",
+                 component.label = "long_exit",
+                 variable = list(columns=longExitBand(bbClose1)),
+                 label = "bb_LE"
+)
+registerDoParallel(cores=detectCores())
+
+out <- apply.paramset(strat, paramset.label = "BB_OPT",
+                      portfolio=portfolio.st, account = account.st, nsamples=0, verbose = TRUE)
+
+stats <- out$tradeStats
+
+tradeGraphs(stats = stats, 
+            free.params=c("bb_break","ma_b"), 
+            statistics = c("Net.Trading.PL","Max.Drawdown","Ann.Sharpe"), 
+            title = "BB Scan")
+
 Sys.setenv(TZ=ttz)                                             # Return to original time zone
