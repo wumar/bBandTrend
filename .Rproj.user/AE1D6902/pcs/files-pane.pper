@@ -1,0 +1,9 @@
+{
+    "path" : "~/R/bBandTrend",
+    "sortOrder" : [
+        {
+            "ascending" : true,
+            "columnIndex" : 2
+        }
+    ]
+}

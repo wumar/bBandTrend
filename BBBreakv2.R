@@ -3,17 +3,23 @@
 # defined as the close price crossing a  number of standard deviations away from the central
 # moving average. THe position is closed when the close price crosses back below another number
 # of standard deviations from the central moving average. Negative number means the other way.
+# Here we incorporate optimization via paramsets, using the bbBreakout variable first, the adding
+# the moving average.
 
 library(quantstrat)       # Required package for strategy back testing
+library(doParallel)       # For parrallel optimization
+library(rgl)              # Library to load 3D trade graphs
+library(reshape2)         # Library to load 3D trade graphs
 ttz<-Sys.getenv('TZ')     # Time zone to UTC, saving original time zone
 Sys.setenv(TZ='UTC')
 
+csvDir       <- "C:/Users/RJK/Documents/SpiderOak Hive/Financial/commodities_data" # Directory containing csv files
 strat        <- "BB1"       # Give the stratgey a name variable
 portfolio.st <- "BB1"       # Portfolio name
 account.st   <- "BB1"       # Account name
-maPeriod     <- 200          # moving average period
-bbBreakout   <- 2           # multiple of SD for breakout 
-bbClose      <- -2           # multiple of SD for close
+maPeriod     <- seq(50, 200, by = 50)       # moving average period
+bbBreakout   <- seq(1, 4, by = 1)           # multiple of SD for breakout 
+bbClose      <- -1                          # multiple of SD for close
 
 # This function sets the standard devation parameter to pass to the 
 # Bolinger Band indicator function
@@ -55,14 +61,26 @@ shortExitBand <- function(user_SD){
 currency('USD')             # set USD as a base currency
 
 # Universe selection
-symbol <- "GSPC" # At this stage is only one symbol
+symbol <- c("LSU","RR","CO","NG","OJ")
 
 # if run previously, run this code
 rm.strat(portfolio.st)
+delete.paramset(portfolio.st,"BB_OPT")
 
 # set the instument as a future and get the data from the csv file
-stock(symbol, currency = "USD", multiplier = 1)
-getSymbols("^GSPC", from = '1995-01-01')
+for (sym in symbol){
+  
+  future(sym, currency = "USD", multiplier = 1)
+}
+
+getSymbols(Symbols = symbol, verbose = TRUE, warnings = TRUE, 
+           src = 'csv', dir= csvDir, extension='csv', header = TRUE, 
+           stingsAsFactors = FALSE)
+
+for (sym in symbol){
+  no_dup <- to.daily(get(sym), indexAt='days',drop.time = TRUE) # this is required to remove duplicate data
+  assign(sym, no_dup)
+}
 
 # initialize the portfolio, account and orders. Starting equity $10K and assuming data post 1998.
 
@@ -72,8 +90,10 @@ initOrders(portfolio = portfolio.st, initDate = "1995-01-01")
 
 # define the strategy with a position limit to prevent multiple trades in a direction
 strategy(strat, store = TRUE)
-addPosLimit(strat, symbol, timestamp="1995-01-01", maxpos=100, 
-            longlevels = 1, minpos=-100, shortlevels = 1)
+for (sym in symbol){
+  addPosLimit(strat, sym, timestamp="2000-01-01", maxpos=100, 
+              longlevels = 1, minpos=-100, shortlevels = 1)
+}
 
 # Add the indicators - One bband for the breakout another for the stop
 
@@ -156,19 +176,52 @@ add.rule(strat, name = 'ruleSignal',
          type ='exit', label = "SX"
          )
 
-out <- applyStrategy(strategy=strat , portfolios=portfolio.st) # Attempt the strategy
-updatePortf(Portfolio = portfolio.st)                          # Update the portfolio
-updateAcct(name = account.st)
-updateEndEq(account.st)
-chart.Posn(Portfolio = portfolio.st, Symbol = symbol, TA="add_BBands(n=20,sd=2)", Dates = "1995-01::2016-05")          # Chart the position
-stats <- tradeStats(portfolio.st)
+#add paramset distributions
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "indicator",
+                 component.label = "BBands_breakout",
+                 variable = list( sd = bbBreakout ),
+                 label = "bb_break"
+)
 
-eq1 <- getAccount(account.st)$summary$End.Eq
-rt1 <- Return.calculate(eq1,"log")
-rt2 <- periodReturn(GSPC, period = "daily")
-returns <- cbind(rt1,rt2)
-colnames(returns) <- c("BB","SP500")
-chart.CumReturns(returns,colorset=c(2,4),legend.loc="topleft",
-                 main="BBand to Benchmark Comparison",ylab="cum return",xlab="",
-                 minor.ticks=FALSE)
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "indicator",
+                 component.label = "BBands_breakout",
+                 variable = list( n = maPeriod ),
+                 label = "ma_b"
+)
+
+add.distribution(portfolio.st,
+                 paramset.label = "BB_OPT",
+                 component.type = "indicator",
+                 component.label = "BBands_close",
+                 variable = list( n = maPeriod ),
+                 label = "ma_c"
+)
+
+add.distribution.constraint(portfolio.st,
+                            paramset.label = "BB_OPT",
+                            distribution.label.1 = "ma_b",
+                            distribution.label.2 = "ma_c",
+                            operator = "==",
+                            label = "mabeqmac")
+
+registerDoParallel(cores=detectCores())
+
+out <- apply.paramset(strat, paramset.label = "BB_OPT",
+                      portfolio=portfolio.st, account = account.st, nsamples=0, verbose = TRUE)
+
+stats <- out$tradeStats
+
+# It is possible to subset the trade stats by symbol for multiple symbols using e.g.
+
+COstats <- subset(stats, Symbol == "CO") 
+
+tradeGraphs(stats = stats, 
+            free.params=c("bb_break","ma_b"),
+            statistics = c("Net.Trading.PL","Max.Drawdown","Ann.Sharpe"), 
+            title = "BB Scan")
+
 Sys.setenv(TZ=ttz)                                             # Return to original time zone
