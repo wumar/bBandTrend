@@ -4,6 +4,8 @@
 # moving average. THe position is closed when the close price crosses back below another number
 # of standard deviations from the central moving average. Negative number means the other way.
 # This code assumes that you have a directory with csv files of OHLC daily data for testing
+# change for the sake
+
 
 library(quantstrat)       # Required package for strategy back testing
 ttz<-Sys.getenv('TZ')     # Time zone to UTC, saving original time zone
