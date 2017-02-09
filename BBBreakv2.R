@@ -19,7 +19,7 @@ portfolio.st <- "BB1"       # Portfolio name
 account.st   <- "BB1"       # Account name
 maPeriod     <- seq(50, 200, by = 50)       # moving average period
 bbBreakout   <- seq(1, 4, by = 1)           # multiple of SD for breakout 
-bbClose      <- 0                           # multiple of SD for close
+bbClose      <- -1                          # multiple of SD for close
 
 # This function sets the standard devation parameter to pass to the 
 # Bolinger Band indicator function
@@ -61,18 +61,26 @@ shortExitBand <- function(user_SD){
 currency('USD')             # set USD as a base currency
 
 # Universe selection
-symbol <- "OJ" # At this stage is only one symbol
+symbol <- c("LSU","RR","CO","NG","OJ")
 
 # if run previously, run this code
 rm.strat(portfolio.st)
 delete.paramset(portfolio.st,"BB_OPT")
 
 # set the instument as a future and get the data from the csv file
-future(symbol, currency = "USD", multiplier = 1)
+for (sym in symbol){
+  
+  future(sym, currency = "USD", multiplier = 1)
+}
+
 getSymbols(Symbols = symbol, verbose = TRUE, warnings = TRUE, 
            src = 'csv', dir= csvDir, extension='csv', header = TRUE, 
            stingsAsFactors = FALSE)
-OJ <- to.daily(OJ, indexAt='days',drop.time = TRUE)
+
+for (sym in symbol){
+  no_dup <- to.daily(get(sym), indexAt='days',drop.time = TRUE) # this is required to remove duplicate data
+  assign(sym, no_dup)
+}
 
 # initialize the portfolio, account and orders. Starting equity $10K and assuming data post 1998.
 
@@ -82,8 +90,10 @@ initOrders(portfolio = portfolio.st, initDate = "1995-01-01")
 
 # define the strategy with a position limit to prevent multiple trades in a direction
 strategy(strat, store = TRUE)
-addPosLimit(strat, symbol, timestamp="1995-01-01", maxpos=100, 
-            longlevels = 1, minpos=-100, shortlevels = 1)
+for (sym in symbol){
+  addPosLimit(strat, sym, timestamp="2000-01-01", maxpos=100, 
+              longlevels = 1, minpos=-100, shortlevels = 1)
+}
 
 # Add the indicators - One bband for the breakout another for the stop
 
@@ -205,8 +215,12 @@ out <- apply.paramset(strat, paramset.label = "BB_OPT",
 
 stats <- out$tradeStats
 
+# It is possible to subset the trade stats by symbol for multiple symbols using e.g.
+
+COstats <- subset(stats, Symbol == "CO") 
+
 tradeGraphs(stats = stats, 
-            free.params=c("bb_break","ma_b"), 
+            free.params=c("bb_break","ma_b"),
             statistics = c("Net.Trading.PL","Max.Drawdown","Ann.Sharpe"), 
             title = "BB Scan")
 
