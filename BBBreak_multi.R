@@ -88,6 +88,7 @@ for (sym in symbol){
 addPosLimit(strat, sym, timestamp="2000-01-01", maxpos=100, 
             longlevels = 1, minpos=-100, shortlevels = 1)
 }
+
 # Add the indicators - One bband for the breakout another for the stop
 
 add.indicator(strat, name = "BBands", 
@@ -135,9 +136,7 @@ add.signal(strat, name = "sigCrossover",
            label = "short_exit"
 )
 
-
 # Add the rules - what trades to make on the signals giving using osMaxPos to limit positions.
-
 
 add.rule(strat, name = 'ruleSignal', 
          arguments = list(sigcol = "long_entry", 
